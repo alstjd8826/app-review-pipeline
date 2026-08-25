@@ -3,8 +3,13 @@
  * secrets/ 파일의 내용 조각을 staged diff 에서 찾는다. 값 자체는 출력하지 않는다.
  */
 import { execSync } from 'node:child_process'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+if (!existsSync('secrets')) {
+  console.log('secrets/ 가 없다. 검사할 것이 없다.')
+  process.exit(0)
+}
 
 const staged = execSync('git diff --cached', { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 })
 
