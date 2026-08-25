@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd 템플릿. 쓰기 전에 두 곳을 바꾼다.
+    __PROJECT_DIR__  → 프로젝트 절대경로
+    com.example.*    → 원하는 라벨
+
+  ⚠️ 디렉토리를 옮기면 이 경로가 깨진다.
+     bootout → 이동 → 경로 수정 → bootstrap 순서로 한다.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.example.app-review</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__PROJECT_DIR__/scripts/run.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__PROJECT_DIR__</string>
+
+    <!--
+      매일 오전 10시.
+      맥이 자고 있었으면 깨어날 때 한 번 따라잡아 실행한다.
+      꺼져 있었으면 다음 부팅 후 실행한다.
+    -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>10</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <!-- 로그인 직후 한 번 돌지 않도록. 스케줄에만 반응한다 -->
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>__PROJECT_DIR__/logs/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__PROJECT_DIR__/logs/launchd.err.log</string>
+</dict>
+</plist>

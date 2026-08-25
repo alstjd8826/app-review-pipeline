@@ -1,0 +1,162 @@
+# ─────────────────────────────────────────────────────────────
+# 서비스 적용 워크시트 (템플릿)
+#
+#   cp worksheet.example.yaml worksheet.yaml
+#
+# 여기만 채우면 된다. 코드는 건드리지 않는다.
+# 건드리게 된다면 그건 설정으로 뺄 것이 남았다는 뜻이다.
+#
+# 채우는 순서와 근거는 GUIDEBOOK.md 14장.
+# ─────────────────────────────────────────────────────────────
+
+service:
+  name: ""                   # 사용자에게 보이는 서비스명
+  type: ""                   # commerce | education | game | subscription | finance | ...
+  context: >
+    모델에게 줄 한두 문장 설명. 누가 리뷰를 쓰는지, 무엇을 파는지.
+    이 문장이 분류 품질을 꽤 좌우한다.
+  languages: [ko]            # 실제로 들어오는 리뷰 언어
+
+# ── 소스 ─────────────────────────────────────────────────────
+# 쓰지 않는 소스는 통째로 지운다.
+sources:
+  - id: google-play
+    package_name: ""                          # com.example.app
+    credentials_path: "./secrets/gcp-sa.json" # 서비스 계정 JSON
+    report_bucket: ""                         # gs://pubsite_prod_rev_...  (과거 리뷰 백필용)
+    backfill_from: ""                         # YYYYMM
+
+  - id: app-store
+    app_id: ""                                # 숫자. iTunes lookup 으로 확인 가능
+    key_kind: team                            # team | individual
+    key_id: ""
+    issuer_id: ""                             # ⚠️ 팀 키만 필요. 개별 키는 null
+    p8_path: "./secrets/asc-key.p8"
+
+ingest:
+  interval: daily            # 볼륨으로 정한다. GUIDEBOOK 12.2
+
+# ── 답변 정책 ─────────────────────────────────────────────────
+# ⚠️ 새로 정하기 전에 기존 답변부터 찾는다. 이미 달아둔 답변이 있으면
+#    거기서 톤을 추출하는 편이 훨씬 정확하다. GUIDEBOOK 7.3
+policy:
+  speaker: ""                # "OO 운영팀"
+  address_reader: ""         # "고객님" / "보호자님"
+  greeting: ""               # 첫 문장 고정 문구
+  signature: ""              # 맺음 문구
+  formality: "정중한 존댓말"
+  emoji: ""                  # "사용 안 함" / "가끔 1개까지"
+  apology_scope: "불편한 사실에 한해 1회"
+
+  cannot_promise: []         # 답변에서 절대 확정하지 않을 것 (환불·보상·일정 등)
+  allowed_links: []          # 답변에 넣어도 되는 유일한 URL. 이 외는 가드레일이 막는다
+  do_not_reply: []           # 답변하지 않을 조건
+
+  # ⚠️ 길이는 상한이 아니라 목표로 준다. 플랫폼 최대치를 넣으면
+  #    그만큼 길어져 기존 톤이 무너진다. GUIDEBOOK 7.4
+  target_reply_length: 280   # 기존 답변 길이의 중앙값 근처
+  platform_limits:
+    app_store: 5970
+    google_play: 350         # 고정값. 넘으면 잘린다
+
+# ── 카테고리별 답변 지침 ───────────────────────────────────────
+category_guidance:
+  praise: >
+    짧게 감사한다. 리뷰에서 언급한 구체적인 점을 한 번 받아 적는다.
+  bug: >
+    재현 상황을 물어보고 문의 채널을 안내한다. 원인을 추측해 단정하지 않는다.
+  # 카테고리마다 한 줄씩. 없으면 기본 지침이 쓰인다
+
+# ── 택소노미 ─────────────────────────────────────────────────
+# ⚠️ 재사용하지 않는다. 실제 리뷰를 100건(없으면 있는 만큼) 읽고
+#    귀납적으로 만든다. 리뷰를 읽기 전에 정하면 반드시 현실과 어긋난다.
+#    설계 절차는 GUIDEBOOK 5.3, 표준 유형 14종은 5.1.
+taxonomy:
+  categories:
+    - id: praise
+      label: "칭찬·만족"
+      description: "긍정적 총평"
+      tags: [general_praise, recommend]
+      auto_draft: true
+
+    - id: bug
+      label: "버그·오류"
+      description: "앱이 의도대로 동작하지 않음"
+      tags: [crash, freeze, login_fail]
+      auto_draft: true
+
+    - id: payment
+      label: "결제·환불"
+      description: "결제 실패, 환불 요구, 요금 이의"
+      tags: [refund_request, double_charge]
+      auto_draft: false      # 가드레일 ①에서 차단 — 사람이 직접 쓴다
+
+    - id: other
+      label: "기타"
+      auto_draft: false
+  fallback: other            # ⚠️ 반드시 둔다. 이 비율이 15% 넘으면 택소노미를 고친다
+
+# 태그 표시용 라벨. id 는 영문으로 두고(모델에게 안정적) 화면에서만 바꾼다
+tag_labels:
+  general_praise: "전반 만족"
+  recommend: "추천"
+  crash: "앱 종료"
+  freeze: "멈춤"
+  login_fail: "로그인 오류"
+  refund_request: "환불 요구"
+  double_charge: "이중 결제"
+
+# ── 가드레일 ─────────────────────────────────────────────────
+guardrails:
+  # ① 입력 게이트 — 초안 생성 자체를 막는다
+  block_categories: [payment, other]
+  block_keywords:
+    - 소송
+    - 고소
+    - 변호사
+    - 언론
+    - 개인정보
+    # 서비스 성격에 따라 추가. 예) 아동 서비스면 안전·부상·학대
+
+  # ② 출력 검증 — 기계적으로 확인한다
+  forbidden_phrases:
+    - "환불해 드리겠습니다"
+    - "보상해 드리겠습니다"
+    - "곧 출시됩니다"
+  max_reply_length: 350
+
+  # ③ 신뢰도 임계 — 애매하면 사람에게
+  min_confidence: 0.75
+
+# ── 알림 ─────────────────────────────────────────────────────
+notify:
+  channel: ""                # "#app-review"
+  # 이 날짜보다 오래된 리뷰는 보내지 않는다.
+  # 처음 가동할 때 과거 리뷰 수십 건이 쏟아지는 것을 막는다.
+  # DB 에는 쌓이고 분류·초안도 만들어진다. 전송만 건너뛴다. GUIDEBOOK 12.5
+  skip_before: ""            # YYYY-MM-DD, 보통 가동 시작일
+
+# ── 검수 ─────────────────────────────────────────────────────
+review_ui:
+  form: slack                # slack | cli | web | spreadsheet
+  reviewer: ""
+  # 기기 정보는 원인 파악이 필요한 카테고리에서만 보여준다.
+  # API 가 마케팅명이 아니라 코드명(gta4xlwifi 등)을 주기 때문이다
+  show_device_for: [bug]
+
+# ── 구현 ─────────────────────────────────────────────────────
+impl:
+  storage: sqlite
+  storage_path: data/pipeline.db
+  # 클라우드에서 실행하면 파일시스템이 남지 않는다. 오브젝트 스토리지에 보관한다.
+  # 비우면 로컬 파일만 쓴다 (로컬 개발).
+  # ⚠️ 정식 DB 가 아니라 파일 동기화다. 실행이 겹치면 덮어쓴다.
+  #    주기를 줄이거나 50MB 를 넘으면 실제 DB 로 옮긴다. GUIDEBOOK 12.7
+  storage_remote: ""         # gs://<버킷>/pipeline.db
+
+  llm:
+    provider: claude-cli     # claude -p 헤드리스
+    classify_model: sonnet
+    draft_model: sonnet
+    # ⚠️ 클라우드에서 돌리려면 장기 토큰이 필요하다.
+    #    claude setup-token 으로 발급해 CLAUDE_CODE_OAUTH_TOKEN 에 넣는다

@@ -1,0 +1,44 @@
+name: 살아있음 신호
+
+# 리뷰가 드문 서비스는 "알림이 안 온다" 와 "파이프라인이 죽었다" 를 구분할 수 없다.
+# 주 1회 상태를 알려 조용함이 정상인지 고장인지 드러낸다. (GUIDEBOOK 13.4)
+
+on:
+  schedule:
+    # 매주 월요일 01:30 UTC = 10:30 KST. 본 파이프라인(10:00)이 돈 뒤에 보고한다
+    - cron: '30 1 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: review-heartbeat
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: 자격증명 배치
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          mkdir -p secrets
+          echo "$GCP_SA_KEY" | base64 -d > secrets/gcp-sa.json
+          printf '%s' "$SLACK_BOT_TOKEN" > secrets/slack-bot-token.txt
+          chmod 600 secrets/*
+
+      # 상태를 읽기만 한다. DB 를 올리지 않으므로 본 파이프라인과 경합하지 않는다
+      - name: 상태 보고
+        run: |
+          npm run db:pull
+          npm run heartbeat

@@ -1,0 +1,92 @@
+name: 앱 리뷰 파이프라인
+
+on:
+  schedule:
+    # 매일 01:00 UTC = 10:00 KST
+    # ⚠️ Actions 스케줄은 부하에 따라 수십 분 밀린다. 정시 실행이 필요하면
+    #    Cloud Run Job + Cloud Scheduler 로 옮긴다 (GUIDEBOOK 12.7)
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '슬랙 전송 없이 대상만 확인'
+        type: boolean
+        default: false
+
+# 실행이 겹치면 DB 파일 동기화가 깨진다. 앞의 실행이 끝날 때까지 기다린다
+concurrency:
+  group: review-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Claude Code 설치
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: 자격증명 배치
+        env:
+          GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          ASC_P8: ${{ secrets.ASC_P8 }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          mkdir -p secrets
+          # base64 로 저장한 값을 파일로 되돌린다.
+          # 워크시트의 경로와 파일명이 정확히 일치해야 한다
+          echo "$GCP_SA_KEY" | base64 -d > secrets/gcp-sa.json
+          echo "$ASC_P8"     | base64 -d > secrets/asc-key.p8
+          printf '%s' "$SLACK_BOT_TOKEN"  > secrets/slack-bot-token.txt
+          chmod 600 secrets/*
+
+      - name: 파이프라인 실행
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            # 새 리뷰가 없으면 LLM 이 안 불리므로 verify 로 따로 확인한다
+            npm run verify
+            npm run db:pull
+            npm run ingest
+            npm run process
+            npm run notify -- --dry
+            echo "dry-run 이므로 DB 를 올리지 않는다"
+          else
+            bash scripts/run.sh
+          fi
+
+      - name: 로그 출력
+        if: always()
+        run: cat logs/run.log 2>/dev/null || echo '로그 없음'
+
+      # 실패를 조용히 넘기지 않는다. heartbeat 는 주 1회라 그 사이 공백이 생긴다
+      - name: 실패 알림
+        if: failure()
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        run: |
+          curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
+            -H 'Content-Type: application/json; charset=utf-8' \
+            -d '{
+              "channel": "${{ vars.SLACK_CHANNEL }}",
+              "text": "🔴 앱 리뷰 파이프라인 실행 실패",
+              "blocks": [{
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "🔴 *앱 리뷰 파이프라인 실행 실패*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|실행 로그 보기>"
+                }
+              }]
+            }' > /dev/null

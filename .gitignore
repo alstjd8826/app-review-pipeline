@@ -1,0 +1,12 @@
+node_modules/
+dist/
+secrets/
+data/
+*.log
+logs/
+.DS_Store
+
+# 서비스 고유값. worksheet.example.yaml 을 복사해서 만든다
+worksheet.yaml
+worksheet.*.yaml
+!worksheet.example.yaml

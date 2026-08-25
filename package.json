@@ -1,0 +1,33 @@
+{
+  "name": "app-review-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "ingest": "tsx src/cli/ingest.ts",
+    "process": "tsx src/cli/process.ts",
+    "notify": "tsx src/cli/notify.ts",
+    "heartbeat": "tsx src/cli/heartbeat.ts",
+    "run": "bash scripts/run.sh",
+    "db:pull": "tsx src/cli/db-sync.ts pull",
+    "db:push": "tsx src/cli/db-sync.ts push",
+    "db:verify": "tsx src/cli/db-verify.ts",
+    "verify": "tsx src/cli/verify.ts",
+    "worksheet:check": "tsx src/cli/worksheet-check.ts",
+    "preview": "tsx src/cli/slack-preview.ts",
+    "slack:reset": "tsx src/cli/slack-reset.ts",
+    "secret-scan": "tsx src/cli/secret-scan.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "@types/better-sqlite3": "^7.6.12",
+    "yaml": "^2.6.1"
+  }
+}
