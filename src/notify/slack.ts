@@ -19,24 +19,66 @@ const SOURCE_LABEL: Record<string, string> = {
   'app-store': 'App Store',
 }
 
+/** 콘솔 링크를 만드는 데 필요한 식별자. 전부 워크시트에서 온다 — 하드코딩하지 않는다 */
+export interface ConsoleIds {
+  appStoreId?: string
+  /** Play Console URL 의 숫자 ID 두 개. 리포트 CSV 의 Review Link 에서 확인한다 */
+  playDeveloperId?: string
+  playAppId?: string
+}
+
 /**
  * 리뷰를 등록하러 갈 콘솔 링크.
- * appStoreId 는 워크시트에서 온다 — 하드코딩하지 않는다.
+ *
+ * ⚠️ **Play 는 API 가 링크를 주지 않는다.** Review 리소스 필드는
+ * `reviewId` · `authorName` · `comments[]` 세 개가 전부다.
+ * 그래서 두 경로로 나뉜다.
+ *
+ *   리포트 CSV 로 들어온 과거 리뷰  → CSV 의 Review Link 를 그대로 쓴다
+ *   API 로 들어온 신규 리뷰         → reviewId 로 URL 을 조립한다
+ *
+ * ⚠️ 조립하는 URL 형식은 구글이 문서화한 것이 아니다. 리포트 CSV 가 담고 있는
+ * 형식을 그대로 따른 것이라 콘솔이 개편되면 깨질 수 있다. 그래서 식별자를
+ * 워크시트에 두고, 없으면 버튼을 아예 붙이지 않는다 — 깨진 링크보다 없는 편이 낫다.
  */
-export function consoleLink(review: Review, appStoreId?: string): string | null {
+export function consoleLink(review: Review, ids: ConsoleIds = {}): string | null {
   if (review.source === 'google-play') {
-    // CSV 의 Review Link 에 리뷰별 상세 URL 이 들어 있다
-    const raw = review.raw as Record<string, string> | undefined
-    const link = raw?.['Review Link']
-    if (link) return link
-    return null
+    const raw = review.raw as Record<string, unknown> | undefined
+
+    // 리포트 CSV 로 들어온 건 구글이 직접 넣어준 링크가 있다. 그것을 우선한다.
+    // CSV 는 http:// 로 준다 — 슬랙이 안전하지 않은 링크로 취급하므로 올려준다
+    const fromCsv = raw?.['Review Link']
+    if (typeof fromCsv === 'string' && fromCsv) return fromCsv.replace(/^http:\/\//, 'https://')
+
+    // API 로 들어온 건 직접 만든다
+    const reviewId = typeof raw?.reviewId === 'string' ? raw.reviewId : review.id
+    if (!reviewId || !ids.playDeveloperId || !ids.playAppId) return null
+    return (
+      `https://play.google.com/console/developers/${ids.playDeveloperId}` +
+      `/app/${ids.playAppId}/user-feedback/review-details` +
+      `?reviewId=${encodeURIComponent(reviewId)}&corpus=PUBLIC_REVIEWS`
+    )
   }
   if (review.source === 'app-store') {
     // ASC 는 리뷰별 앵커가 없다. 앱 리뷰 목록으로 보낸다
-    if (!appStoreId) return null
-    return `https://appstoreconnect.apple.com/apps/${appStoreId}/distribution/reviews`
+    if (!ids.appStoreId) return null
+    return `https://appstoreconnect.apple.com/apps/${ids.appStoreId}/distribution/reviews`
   }
   return null
+}
+
+/** 워크시트에서 식별자를 모은다 */
+export function consoleIds(w: {
+  sources?: { id: string; app_id?: string | number; console_developer_id?: string | number; console_app_id?: string | number }[]
+}): ConsoleIds {
+  const str = (v: unknown) => (v === undefined || v === null ? undefined : String(v))
+  const asc = w.sources?.find((s) => s.id === 'app-store')
+  const play = w.sources?.find((s) => s.id === 'google-play')
+  return {
+    appStoreId: str(asc?.app_id),
+    playDeveloperId: str(play?.console_developer_id),
+    playAppId: str(play?.console_app_id),
+  }
 }
 
 /** 2026-08-05 (KST) */
@@ -88,7 +130,7 @@ const URGENCY_LABEL: Record<string, string> = {
 }
 
 /** 스레드에 붙는 검수 내용 */
-export function buildThreadBlocks(c: CaseRow, limit: number, w?: Worksheet, appStoreId?: string) {
+export function buildThreadBlocks(c: CaseRow, limit: number, w?: Worksheet, ids: ConsoleIds = {}) {
   const cls = c.classification
   const blocks: unknown[] = []
 
@@ -123,7 +165,7 @@ export function buildThreadBlocks(c: CaseRow, limit: number, w?: Worksheet, appS
       type: 'section',
       text: { type: 'mrkdwn', text: '*초안 없음* — 직접 작성해야 하는 리뷰입니다.' },
     })
-    const link = consoleLink(c.review)
+    const link = consoleLink(c.review, ids)
     if (link) {
       blocks.push({
         type: 'actions',
@@ -148,10 +190,10 @@ export function buildThreadBlocks(c: CaseRow, limit: number, w?: Worksheet, appS
  * 코드블록으로 감싸 본문과 시각적으로 구분한다.
  * 분류 결과와 다른 메시지로 나누면 초안만 따로 다루기 쉽다.
  */
-export function buildDraftBlocks(c: CaseRow, limit: number, appStoreId?: string) {
+export function buildDraftBlocks(c: CaseRow, limit: number, ids: ConsoleIds = {}) {
   if (!c.draft) return null
   const over = c.draft.charCount > limit
-  const link = consoleLink(c.review, appStoreId)
+  const link = consoleLink(c.review, ids)
 
   const blocks: unknown[] = [
     {
@@ -232,7 +274,7 @@ export class SlackNotifier {
     c: CaseRow,
     limit: number,
     w?: Worksheet,
-    appStoreId?: string,
+    ids: ConsoleIds = {},
   ): Promise<{ ts: string; channel: string }> {
     const showDevice = Boolean(
       c.classification &&
@@ -248,11 +290,11 @@ export class SlackNotifier {
     await this.post({
       thread_ts: parent.ts,
       text: c.draft ? '분류 결과' : '직접 작성 필요',
-      blocks: buildThreadBlocks(c, limit, w, appStoreId),
+      blocks: buildThreadBlocks(c, limit, w, ids),
     })
 
     // 초안은 별도 메시지로. 복사하기 좋으라고 분리한다
-    const draftBlocks = buildDraftBlocks(c, limit, appStoreId)
+    const draftBlocks = buildDraftBlocks(c, limit, ids)
     if (draftBlocks) {
       await this.post({
         thread_ts: parent.ts,

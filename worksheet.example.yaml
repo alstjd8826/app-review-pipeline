@@ -26,6 +26,17 @@ sources:
     report_bucket: ""                         # gs://pubsite_prod_rev_...  (과거 리뷰 백필용)
     backfill_from: ""                         # YYYYMM
 
+    # 검수 알림의 '답변 등록하러 가기' 링크를 만드는 데 쓴다.
+    # ⚠️ API 는 리뷰 링크를 주지 않는다 — Review 리소스 필드는
+    #    reviewId · authorName · comments 세 개가 전부다.
+    #    그래서 리포트 CSV 의 Review Link 형식을 따라 직접 조립한다.
+    #    문서화된 형식이 아니므로 콘솔이 개편되면 여기를 고쳐야 한다.
+    # 확인법: Play Console 에서 리뷰 하나를 열고 주소창의 두 숫자를 본다
+    #    .../developers/<앞 숫자>/app/<뒤 숫자>/user-feedback/review-details?...
+    # 비워두면 신규 리뷰에 링크 버튼이 붙지 않는다 (깨진 링크보다 낫다)
+    console_developer_id: ""
+    console_app_id: ""
+
   - id: app-store
     app_id: ""                                # 숫자. iTunes lookup 으로 확인 가능
     key_kind: team                            # team | individual

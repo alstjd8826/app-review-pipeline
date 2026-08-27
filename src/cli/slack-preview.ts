@@ -3,9 +3,9 @@
  * 레이아웃을 확정한 뒤 전송을 붙인다.
  */
 import { Store } from '../storage/db.js'
-import { buildMainBlocks, buildThreadBlocks, consoleLink } from '../notify/slack.js'
+import { buildMainBlocks, buildThreadBlocks, consoleLink, consoleIds } from '../notify/slack.js'
 import { loadWorksheet, worksheetPath } from '../core/config.js'
-import { findSource, type WorksheetWithSources } from '../sources/factory.js'
+import type { WorksheetWithSources } from '../sources/factory.js'
 
 const PLAY_LIMIT = 350
 const ASC_LIMIT = 5970
@@ -45,8 +45,7 @@ function render(blocks: unknown[], indent = '  ') {
 function main() {
   const store = new Store()
   const w = loadWorksheet(worksheetPath()) as WorksheetWithSources
-  const appStoreId = findSource(w, 'app-store')?.app_id
-  const ascId = appStoreId ? String(appStoreId) : undefined
+  const ids = consoleIds(w)
   const queue = store.reviewQueue()
 
   if (!queue.length) {
@@ -70,8 +69,8 @@ function main() {
     render(buildMainBlocks(c.review, showDevice), '║ ')
     console.log('╟' + '─'.repeat(60))
     console.log('║ ↳ 스레드')
-    render(buildThreadBlocks(c, limit, w, ascId), '║   ')
-    const link = consoleLink(c.review, ascId)
+    render(buildThreadBlocks(c, limit, w, ids), '║   ')
+    const link = consoleLink(c.review, ids)
     console.log(`║   → ${link ? link.slice(0, 70) + (link.length > 70 ? '…' : '') : '(링크 없음)'}`)
     console.log('╚' + '═'.repeat(60))
     console.log()

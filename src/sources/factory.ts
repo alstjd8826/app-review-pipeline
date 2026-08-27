@@ -17,6 +17,9 @@ export interface SourceConfig {
   credentials_path?: string
   report_bucket?: string
   backfill_from?: string | number
+  /** 콘솔 링크 조립용. API 가 리뷰 링크를 주지 않아 필요하다 */
+  console_developer_id?: string | number
+  console_app_id?: string | number
   // app-store
   app_id?: string | number
   key_id?: string

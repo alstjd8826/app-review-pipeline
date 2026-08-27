@@ -27,7 +27,17 @@ function check(w: WorksheetWithSources): Issue[] {
   const sources = w.sources ?? []
   if (!sources.length) err('sources 가 비어 있다')
   for (const s of sources) {
-    if (s.id === 'google-play' && !s.package_name) err('google-play: package_name 없음')
+    if (s.id === 'google-play') {
+      if (!s.package_name) err('google-play: package_name 없음')
+      // 없으면 신규 리뷰 카드에 '답변 등록하러 가기' 버튼이 조용히 빠진다.
+      // API 가 리뷰 링크를 주지 않아 이 값으로 조립하기 때문이다
+      if (!s.console_developer_id || !s.console_app_id) {
+        warn(
+          'google-play: console_developer_id / console_app_id 가 없다 — ' +
+            '신규 리뷰에 답변 등록 링크가 붙지 않는다 (API 는 링크를 주지 않는다)',
+        )
+      }
+    }
     if (s.id === 'app-store') {
       if (!s.app_id) err('app-store: app_id 없음')
       if (s.key_kind === 'team' && !s.issuer_id) {

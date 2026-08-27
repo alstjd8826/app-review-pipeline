@@ -7,9 +7,9 @@
  * --force  skip_before 필터를 무시한다. 과거 리뷰를 일부러 보낼 때만
  */
 import { Store } from '../storage/db.js'
-import { SlackNotifier } from '../notify/slack.js'
+import { SlackNotifier, consoleIds } from '../notify/slack.js'
 import { loadWorksheet, worksheetPath, requireChannel } from '../core/config.js'
-import { findSource, type WorksheetWithSources } from '../sources/factory.js'
+import type { WorksheetWithSources } from '../sources/factory.js'
 
 const PLAY_LIMIT = 350
 const ASC_LIMIT = 5970
@@ -21,7 +21,7 @@ async function main() {
 
   const store = new Store()
   const w = loadWorksheet(worksheetPath()) as WorksheetWithSources
-  const appStoreId = findSource(w, 'app-store')?.app_id
+  const ids = consoleIds(w)
   const CHANNEL = w.notify?.channel ?? requireChannel(w)
 
   let targets = store.unnotified()
@@ -71,7 +71,7 @@ async function main() {
     const limit = c.review.source === 'google-play' ? PLAY_LIMIT : ASC_LIMIT
     process.stdout.write(`  ★${c.review.rating} ${c.review.source} `)
     try {
-      const { ts, channel } = await slack.notify(c, limit, w, appStoreId ? String(appStoreId) : undefined)
+      const { ts, channel } = await slack.notify(c, limit, w, ids)
       store.markNotified(c.reviewId, ts, channel)
       console.log(`→ 전송 완료`)
     } catch (e) {
