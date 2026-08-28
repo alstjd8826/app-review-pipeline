@@ -12,8 +12,24 @@ import { loadWorksheet, worksheetPath, requireChannel } from '../core/config.js'
 import { remoteConfig, remoteUpdatedAt } from '../storage/remote.js'
 
 const LOG = 'logs/run.log'
-// 하루 한 번 도는데 이만큼 넘으면 이상하다. 테스트용으로 덮어쓸 수 있다
-const STALE_HOURS = Number(process.env.STALE_HOURS ?? 36)
+/**
+ * 이만큼 넘게 정상 완료 기록이 없으면 🔴.
+ *
+ * ⚠️ **실행 주기가 아니라 "정상적으로 벌어질 수 있는 최대 간격"에 맞춘다.**
+ * 매일 돌리므로 정상 간격은 약 24시간이지만, 스케줄 지연(실측 98분)과
+ * GitHub 이 하루치를 통째로 건너뛰는 경우(실측 1회)까지 감안하면 48시간을 넘길 수 있다.
+ * 50 은 **하루 걸러도 조용하고, 이틀 연속 빠지면 알린다**는 뜻이다.
+ *
+ * 하루 빠진 것을 알리지 않는 이유 — 알아도 할 수 있는 일이 없다.
+ * GitHub 이 건너뛴 것이라 재촉할 방법이 없고, Play 조회 창이 7일이라
+ * 하루 이틀은 다음 실행이 함께 가져온다. 이틀 연속은 다르다. 그건 설정이 깨진 신호다.
+ *
+ * ⚠️ 실행 주기를 바꾸면 이 값도 같이 본다. 주말을 빼면 금→월이 72시간이라
+ * 50 으로는 매주 월요일 🔴 오탐이 난다.
+ *
+ * 테스트용으로 덮어쓸 수 있다.
+ */
+const STALE_HOURS = Number(process.env.STALE_HOURS ?? 50)
 
 const fmt = (d: Date) =>
   d.toLocaleString('ko-KR', {
